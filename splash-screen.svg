@@ -1,0 +1,14 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="900" fill="#0F172A"/>
+  <circle cx="190" cy="132" r="280" fill="#7F1026" fill-opacity="0.45"/>
+  <circle cx="1220" cy="760" r="360" fill="#1C2E4A" fill-opacity="0.75"/>
+  <circle cx="760" cy="120" r="220" fill="#A91837" fill-opacity="0.22"/>
+  <rect x="470" y="250" width="460" height="400" rx="52" fill="#111F36" fill-opacity="0.8"/>
+  <rect x="540" y="340" width="62" height="220" fill="#F6D8DD"/>
+  <rect x="602" y="340" width="62" height="220" fill="#DE8798"/>
+  <rect x="664" y="340" width="62" height="220" fill="#B41E3A"/>
+  <rect x="726" y="340" width="62" height="220" fill="#7F1026"/>
+  <circle cx="802" cy="318" r="30" fill="#ECA8B5"/>
+  <text x="700" y="620" text-anchor="middle" font-family="Aptos, Segoe UI, Arial" font-size="38" fill="#FCE9EE">CrimsonSupply Nexus</text>
+  <text x="700" y="658" text-anchor="middle" font-family="Aptos, Segoe UI, Arial" font-size="18" fill="#D7E3FA">Clinical Inventory Intelligence Platform</text>
+</svg>

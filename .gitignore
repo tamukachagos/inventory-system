@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Environment files — never commit real secrets
+.env
+.env.local
+.env.production
+*.local
+
+# Keep examples
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.sw?
+
+# Test artifacts
+playwright-report/
+test-results/
+coverage/
+
+# Vite cache
+.vite/

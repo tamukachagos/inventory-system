@@ -1,0 +1,144 @@
+.login-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background-size: 180% 180%;
+  animation: brandGradientShift 14s ease-in-out infinite;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(138, 15, 45, 0.2), transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(28, 46, 74, 0.16), transparent 40%),
+    linear-gradient(145deg, #f9f4f6, #edf1f7);
+}
+
+.mode-dark .login-shell {
+  animation: brandGradientShift 14s ease-in-out infinite;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(169, 24, 55, 0.24), transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(42, 61, 94, 0.24), transparent 40%),
+    linear-gradient(145deg, #0d1526, #132038);
+}
+
+.auth-hero {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.auth-logo {
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
+  box-shadow: 0 10px 25px rgba(17, 29, 50, 0.22);
+}
+
+.app-boot {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(169, 24, 55, 0.3), transparent 36%),
+    radial-gradient(circle at 88% 82%, rgba(28, 46, 74, 0.44), transparent 45%),
+    linear-gradient(145deg, #0f172a, #15233c);
+}
+
+.app-boot-card {
+  width: min(460px, 92vw);
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  padding: 28px 24px;
+  background: rgba(18, 29, 49, 0.65);
+  backdrop-filter: blur(8px);
+  color: #fce9ee;
+}
+
+.app-boot-title {
+  margin: 10px 0 4px;
+  font-size: 1.28rem;
+  font-weight: 700;
+}
+
+.app-boot-tag {
+  margin: 0;
+  color: #d5e0f2;
+  font-size: 0.93rem;
+}
+
+.app-boot-track {
+  margin: 16px auto 0;
+  width: 140px;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.17);
+}
+
+.app-boot-track::after {
+  content: '';
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f6d8dd, #de8798, #b41e3a);
+  animation: splash-load 1.2s ease-in-out infinite;
+}
+
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #5a94ff;
+  animation: dotPulse 0.9s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.app-root {
+  min-height: 100dvh;
+}
+
+.app-shell-main {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  padding-top: var(--app-header-h);
+  padding-right: var(--app-shell-pad-x);
+  padding-bottom: var(--app-shell-pad-y);
+  padding-left: var(--app-shell-pad-x);
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-2px); opacity: 1; }
+}
+
+@keyframes brandGradientShift {
+  0% { background-position: 0% 20%; }
+  50% { background-position: 100% 80%; }
+  100% { background-position: 0% 20%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-indicator span {
+    animation: none;
+    opacity: 0.8;
+  }
+
+  * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

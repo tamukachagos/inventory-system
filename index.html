@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#8A0F2D" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CrimsonSupply Nexus</title>
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 18% 15%, rgba(169,24,55,0.42), transparent 42%),
+          radial-gradient(circle at 84% 80%, rgba(22, 42, 71, 0.72), transparent 46%),
+          linear-gradient(135deg, #0f172a 0%, #111f36 60%, #17253f 100%);
+        transition: opacity 360ms ease;
+      }
+      #app-splash.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .splash-inner {
+        text-align: center;
+        color: #fce9ee;
+        font-family: Aptos, "Segoe UI", Arial, sans-serif;
+      }
+      .splash-logo {
+        width: 84px;
+        height: 84px;
+        border-radius: 22px;
+        box-shadow: 0 10px 30px rgba(17, 31, 54, 0.45);
+      }
+      .splash-title {
+        margin: 16px 0 4px;
+        font-size: 1.4rem;
+        font-weight: 700;
+      }
+      .splash-tagline {
+        margin: 0;
+        color: #cfd9eb;
+        font-size: 0.92rem;
+      }
+      .splash-loader {
+        width: 140px;
+        height: 4px;
+        margin: 18px auto 0;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .splash-loader::after {
+        content: "";
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #f6d8dd, #de8798, #b41e3a);
+        animation: splash-load 1.3s ease-in-out infinite;
+      }
+      @keyframes splash-load {
+        0% { transform: translateX(-140%); }
+        100% { transform: translateX(310%); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app-splash" role="status" aria-live="polite">
+      <div class="splash-inner">
+        <img class="splash-logo" src="/brand-logo.svg" alt="CrimsonSupply Nexus logo" />
+        <p class="splash-title">CrimsonSupply Nexus</p>
+        <p class="splash-tagline">Clinical Inventory Intelligence Platform</p>
+        <div class="splash-loader"></div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
