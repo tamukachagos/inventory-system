@@ -47,8 +47,8 @@ import {
   YAxis,
 } from 'recharts';
 import './App.css';
-import AppLayout from './components/AppLayout';
-import BarcodeInput from './components/BarcodeInput';
+import AppLayout from './AppLayout';
+import BarcodeInput from './BarcodeInput';
 import {
   clearConflictItem,
   enqueueOfflineAction,
