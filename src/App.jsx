@@ -59,7 +59,7 @@ import {
   runSyncCycle,
 } from './syncEngine';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:5000`;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const DRAWER_WIDTH = 280;
 const MotionCard = motion(Card);
 const APP_NAME = 'CrimsonSupply Nexus';
@@ -1668,13 +1668,13 @@ function App({ colorMode = 'light', onToggleColorMode = () => {} }) {
     return (
       <Box className={`login-shell mode-${colorMode}`}>
         <CssBaseline />
-        <Card sx={{ maxWidth: 420, width: '100%' }}>
-          <CardContent>
+        <Card sx={{ maxWidth: 400, width: '100%', borderRadius: 3 }}>
+          <CardContent sx={{ p: 4 }}>
             <div className="auth-hero">
               <img className="auth-logo" src="/brand-logo.svg" alt={`${APP_NAME} logo`} />
+              <Typography variant="h5" fontWeight={700} sx={{ mt: 1.5 }}>{APP_NAME}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>{APP_TAGLINE}</Typography>
             </div>
-            <Typography variant="h4">{APP_NAME}</Typography>
-            <Typography color="text.secondary" sx={{ mb: 2 }}>{APP_TAGLINE}</Typography>
             <Stack component="form" spacing={2} onSubmit={login}>
               <TextField
                 label="ID Card"
@@ -1682,6 +1682,7 @@ function App({ colorMode = 'light', onToggleColorMode = () => {} }) {
                 error={Boolean(getFieldError('login.student_card'))}
                 helperText={getFieldError('login.student_card')}
                 onChange={(e) => setField('login', 'student_card', e.target.value)}
+                fullWidth
               />
               <TextField
                 label="Password"
@@ -1690,8 +1691,9 @@ function App({ colorMode = 'light', onToggleColorMode = () => {} }) {
                 error={Boolean(getFieldError('login.password'))}
                 helperText={getFieldError('login.password')}
                 onChange={(e) => setField('login', 'password', e.target.value)}
+                fullWidth
               />
-              <Button type="submit" variant="contained">Sign In</Button>
+              <Button type="submit" variant="contained" size="large" sx={{ mt: 1 }}>Sign In</Button>
             </Stack>
           </CardContent>
         </Card>

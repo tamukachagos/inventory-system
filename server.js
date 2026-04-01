@@ -64,15 +64,36 @@ const isLocalNetworkOrigin = (origin) => {
   }
 };
 
+const isSameHostOrigin = (origin, req) => {
+  try {
+    return new URL(origin).host === req.get('host');
+  } catch (_) {
+    return false;
+  }
+};
+
 app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.has(origin)) return callback(null, true);
-      if (ALLOW_LAN_CORS && isLocalNetworkOrigin(origin)) return callback(null, true);
+  cors((req, callback) => {
+    const origin = req.header('Origin');
+    let allowed = false;
+    if (!origin) {
+      allowed = true;
+    } else if (isSameHostOrigin(origin, req)) {
+      allowed = true;
+    } else if (allowedOrigins.has(origin)) {
+      allowed = true;
+    } else if (ALLOW_LAN_CORS && isLocalNetworkOrigin(origin)) {
+      allowed = true;
+    }
+
+    if (!allowed) {
       return callback(new Error('CORS origin not allowed'));
-    },
-    credentials: true,
+    }
+
+    return callback(null, {
+      origin: true,
+      credentials: true,
+    });
   })
 );
 app.use(helmet({
@@ -7408,8 +7429,7 @@ app.use((err, req, res, next) => {
 
 const PORT = Number(process.env.PORT || 5000);
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
+const startBackgroundWorkers = () => {
   if (PRINT_WORKER_ENABLED) {
     printWorkerState.timer = setInterval(async () => {
       if (printWorkerState.running) return;
@@ -7463,5 +7483,14 @@ app.listen(PORT, '0.0.0.0', () => {
   } else {
     console.log('Expiry alert worker disabled via EXPIRY_ALERT_WORKER_ENABLED=false');
   }
-});
+};
+
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    startBackgroundWorkers();
+  });
+}
+
+module.exports = app;
 

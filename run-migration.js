@@ -23,12 +23,15 @@ const pool = new Pool({
   ssl: false,
 });
 
-const sqlPath = path.resolve(__dirname, '..', 'migration.sql');
+const migrationFile = process.env.MIGRATION_FILE || 'migration.sql';
+const sqlPath = path.resolve(__dirname, migrationFile);
 const sql = fs.readFileSync(sqlPath, 'utf8');
 const sqlChecksum = crypto.createHash('sha256').update(sql).digest('hex');
 const versionTag = process.env.SCHEMA_VERSION_TAG || path.basename(sqlPath);
 const appliedBy = process.env.USER || process.env.USERNAME || 'unknown';
 const migrationLockKey = Number(process.env.MIGRATION_LOCK_KEY || 921337);
+const lockTimeout = String(process.env.MIGRATION_LOCK_TIMEOUT || '15s').replace(/'/g, '');
+const statementTimeout = String(process.env.MIGRATION_STATEMENT_TIMEOUT || '10min').replace(/'/g, '');
 
 const ensureSchemaVersioning = async (client) => {
   await client.query(
@@ -77,8 +80,8 @@ const enforceSafetyChecks = async (client) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL lock_timeout = $1', [process.env.MIGRATION_LOCK_TIMEOUT || '15s']);
-    await client.query('SET LOCAL statement_timeout = $1', [process.env.MIGRATION_STATEMENT_TIMEOUT || '10min']);
+    await client.query(`SET LOCAL lock_timeout = '${lockTimeout}'`);
+    await client.query(`SET LOCAL statement_timeout = '${statementTimeout}'`);
     await client.query('SELECT pg_advisory_xact_lock($1)', [migrationLockKey]);
 
     await ensureSchemaVersioning(client);
