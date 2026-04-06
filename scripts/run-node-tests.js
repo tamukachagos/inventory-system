@@ -15,7 +15,7 @@ if (!files.length) {
   process.exit(1);
 }
 
-const result = spawnSync(process.execPath, ["--test", ...files], {
+const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...files], {
   cwd: root,
   stdio: "inherit",
   env: process.env,

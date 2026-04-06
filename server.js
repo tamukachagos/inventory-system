@@ -2128,7 +2128,25 @@ const idempotencyKeyFromRequest = (req) =>
 
 const beginInventoryTxn = async (client) => {
   await client.query('BEGIN');
-  await client.query('SET LOCAL TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+  // These movement routes already take explicit row locks and bounded updates.
+  // READ COMMITTED avoids spurious 40001 aborts under normal concurrent stock activity.
+  await client.query('SET LOCAL TRANSACTION ISOLATION LEVEL READ COMMITTED');
+};
+
+const isSerializationFailure = (err) =>
+  Boolean(err) && (
+    err.code === '40001'
+    || /could not serialize access/i.test(String(err.message || ''))
+  );
+
+const advisoryLockKey = (value) => crypto.createHash('sha256').update(String(value)).digest().readInt32BE(0);
+
+const lockMovementIdempotencyKey = async ({ client, actorUserId, idempotencyKey }) => {
+  if (!movementSchemaExtended || !idempotencyKey) return;
+  await client.query(
+    'SELECT pg_advisory_xact_lock($1, $2)',
+    [advisoryLockKey(`actor:${actorUserId}`), advisoryLockKey(`idem:${idempotencyKey}`)]
+  );
 };
 
 const findIdempotentMovement = async ({ client, actorUserId, idempotencyKey }) => {
@@ -3745,6 +3763,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     await ensureMovementSchema();
     await ensureLotExpirySchema();
     await beginInventoryTxn(client);
+    await lockMovementIdempotencyKey({ client, actorUserId: user_id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: user_id, idempotencyKey });
     if (replayed) {
       await client.query('ROLLBACK');
@@ -3881,6 +3900,9 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
 
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    if (isSerializationFailure(err)) {
+      return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
+    }
     next(err);
   } finally {
     client.release();
@@ -3941,6 +3963,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       return res.status(404).json({ error: 'Operator card not found' });
     }
     const operator = operatorResult.rows[0];
+    await lockMovementIdempotencyKey({ client, actorUserId: operator.id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: operator.id, idempotencyKey });
     if (replayed) {
       await client.query('ROLLBACK');
@@ -4072,6 +4095,9 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     });
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) {}
+    if (isSerializationFailure(err)) {
+      return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
+    }
     next(err);
   } finally {
     client.release();
@@ -4100,6 +4126,7 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     await ensureMovementSchema();
     await ensureLotExpirySchema();
     await beginInventoryTxn(client);
+    await lockMovementIdempotencyKey({ client, actorUserId: user_id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: user_id, idempotencyKey });
     if (replayed) {
       await client.query('ROLLBACK');
@@ -4166,6 +4193,9 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
 
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    if (isSerializationFailure(err)) {
+      return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
+    }
     next(err);
   } finally {
     client.release();
@@ -4200,6 +4230,7 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     await ensureMovementSchema();
     await ensureLotExpirySchema();
     await beginInventoryTxn(client);
+    await lockMovementIdempotencyKey({ client, actorUserId: req.user.id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: req.user.id, idempotencyKey });
     if (replayed) {
       await client.query('ROLLBACK');
@@ -4297,6 +4328,9 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     res.json(result);
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    if (isSerializationFailure(err)) {
+      return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
+    }
     next(err);
   } finally {
     client.release();
@@ -5822,9 +5856,17 @@ app.post('/cycle-counts/:id/approve', requireRole('ADMIN'), validateRequest({ pa
       payload: { decision, apply_adjustments, notes: notes || null, line_count: lines.rows.length },
     });
 
-    return res.json({ cycle_count: updated.rows[0], lines: lines.rows, adjustments_applied: decision === 'APPROVED' && apply_adjustments });
+    return res.json({
+      status,
+      cycle_count: updated.rows[0],
+      lines: lines.rows,
+      adjustments_applied: decision === 'APPROVED' && apply_adjustments,
+    });
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch (_) {}
+    if (isSerializationFailure(err)) {
+      return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
+    }
     next(err);
   } finally {
     client.release();
@@ -5855,6 +5897,7 @@ app.post('/stock-in-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next)
     await ensureMovementSchema();
     await ensureLotExpirySchema();
     await beginInventoryTxn(client);
+    await lockMovementIdempotencyKey({ client, actorUserId: req.user.id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: req.user.id, idempotencyKey });
     if (replayed) {
       await client.query('ROLLBACK');
@@ -6027,6 +6070,7 @@ app.post('/return-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
       return res.status(404).json({ error: 'Operator card not found' });
     }
     const operator = operatorResult.rows[0];
+    await lockMovementIdempotencyKey({ client, actorUserId: operator.id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: operator.id, idempotencyKey });
     if (replayed) {
       await client.query('ROLLBACK');

@@ -19,6 +19,20 @@ const createPool = () =>
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const createOutputBuffer = () => {
+  const chunks = [];
+  return {
+    append(chunk) {
+      if (!chunk) return;
+      chunks.push(chunk.toString());
+      if (chunks.length > 200) chunks.shift();
+    },
+    dump() {
+      return chunks.join('').trim();
+    },
+  };
+};
+
 const waitForHealth = async (baseUrl, retries = 60, delayMs = 250) => {
   for (let i = 0; i < retries; i += 1) {
     try {
@@ -31,16 +45,28 @@ const waitForHealth = async (baseUrl, retries = 60, delayMs = 250) => {
 };
 
 const startServer = async (port) => {
+  const stdout = createOutputBuffer();
+  const stderr = createOutputBuffer();
+  let exitInfo = null;
   const proc = spawn('node', ['server.js'], {
     cwd: ROOT,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PORT: String(port) },
+  });
+  proc.stdout.on('data', (chunk) => stdout.append(chunk));
+  proc.stderr.on('data', (chunk) => stderr.append(chunk));
+  proc.once('exit', (code, signal) => {
+    exitInfo = { code, signal };
   });
   const baseUrl = `http://127.0.0.1:${port}`;
   const ready = await waitForHealth(baseUrl);
   if (!ready) {
     proc.kill('SIGTERM');
-    throw new Error(`Server failed to start on ${baseUrl}`);
+    const serverLogs = [stdout.dump(), stderr.dump()].filter(Boolean).join('\n');
+    const exitSummary = exitInfo ? ` exit=${JSON.stringify(exitInfo)}` : '';
+    throw new Error(
+      `Server failed to start on ${baseUrl}.${exitSummary}${serverLogs ? `\n--- server logs ---\n${serverLogs}` : ''}`
+    );
   }
   return { proc, baseUrl };
 };

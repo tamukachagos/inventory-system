@@ -8,11 +8,25 @@ require('dotenv').config();
 
 const TEST_PORT = Number(process.env.TEST_PORT || 5055);
 const BASE = process.env.BASE_URL || `http://127.0.0.1:${TEST_PORT}`;
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = __dirname;
 
 let serverProc = null;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const createOutputBuffer = () => {
+  const chunks = [];
+  return {
+    append(chunk) {
+      if (!chunk) return;
+      chunks.push(chunk.toString());
+      if (chunks.length > 200) chunks.shift();
+    },
+    dump() {
+      return chunks.join('').trim();
+    },
+  };
+};
 
 const request = async (method, route, { token, body } = {}) => {
   const response = await fetch(`${BASE}${route}`, {
@@ -104,13 +118,25 @@ const seedUsers = async () => {
 };
 
 test.before(async () => {
+  const stdout = createOutputBuffer();
+  const stderr = createOutputBuffer();
+  let exitInfo = null;
   serverProc = spawn('node', ['server.js'], {
     cwd: ROOT,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PORT: String(TEST_PORT) },
   });
+  serverProc.stdout.on('data', (chunk) => stdout.append(chunk));
+  serverProc.stderr.on('data', (chunk) => stderr.append(chunk));
+  serverProc.once('exit', (code, signal) => {
+    exitInfo = { code, signal };
+  });
   const ready = await ensureServerReady();
-  assert.equal(ready, true, 'server did not become ready for integration tests');
+  assert.equal(
+    ready,
+    true,
+    `server did not become ready for integration tests${exitInfo ? ` exit=${JSON.stringify(exitInfo)}` : ''}${[stdout.dump(), stderr.dump()].some(Boolean) ? `\n--- server logs ---\n${[stdout.dump(), stderr.dump()].filter(Boolean).join('\n')}` : ''}`
+  );
   await seedUsers();
 });
 
