@@ -227,6 +227,145 @@ CREATE INDEX IF NOT EXISTS idx_inventory_transactions_filters
   ON inventory_transactions(item_id, encounter_id, user_id, type, created_at DESC);
 
 /* ---------------------------
+   MULTI-CLINIC FOUNDATION
+---------------------------- */
+
+CREATE TABLE IF NOT EXISTS organizations (
+  id BIGSERIAL PRIMARY KEY,
+  code VARCHAR(50) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS clinics (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  code VARCHAR(50) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  timezone VARCHAR(80),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (org_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS locations (
+  id BIGSERIAL PRIMARY KEY,
+  clinic_id BIGINT NOT NULL REFERENCES clinics(id) ON DELETE RESTRICT,
+  code VARCHAR(60) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  location_type VARCHAR(40) NOT NULL DEFAULT 'WAREHOUSE'
+    CHECK (location_type IN ('WAREHOUSE', 'OPERATORY', 'RECEIVING', 'QUARANTINE', 'VIRTUAL')),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (clinic_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_clinics_org_id ON clinics(org_id);
+CREATE INDEX IF NOT EXISTS idx_locations_clinic_id ON locations(clinic_id);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS org_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS home_clinic_id BIGINT REFERENCES clinics(id) ON DELETE SET NULL;
+
+ALTER TABLE encounters
+  ADD COLUMN IF NOT EXISTS clinic_id BIGINT REFERENCES clinics(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS location_id BIGINT REFERENCES locations(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_encounters_clinic_id ON encounters(clinic_id);
+CREATE INDEX IF NOT EXISTS idx_encounters_location_id ON encounters(location_id);
+
+CREATE TABLE IF NOT EXISTS item_master (
+  id BIGSERIAL PRIMARY KEY,
+  sku_code VARCHAR(120) NOT NULL UNIQUE,
+  name VARCHAR(255) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS stock_ledger (
+  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  clinic_id BIGINT NOT NULL REFERENCES clinics(id) ON DELETE RESTRICT,
+  location_id BIGINT REFERENCES locations(id) ON DELETE SET NULL,
+  item_master_id BIGINT NOT NULL REFERENCES item_master(id) ON DELETE RESTRICT,
+  lot_id BIGINT,
+  encounter_id BIGINT REFERENCES encounters(id) ON DELETE SET NULL,
+  movement_type VARCHAR(40) NOT NULL CHECK (
+    movement_type IN ('RECEIPT', 'ISSUE', 'RETURN', 'ADJUST_IN', 'ADJUST_OUT', 'TRANSFER_IN', 'TRANSFER_OUT')
+  ),
+  qty_delta NUMERIC(14,3) NOT NULL CHECK (qty_delta <> 0),
+  reason_code VARCHAR(60) NOT NULL,
+  movement_source VARCHAR(60) NOT NULL,
+  correlation_id VARCHAR(120) NOT NULL UNIQUE,
+  idempotency_key VARCHAR(120),
+  actor_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  allow_negative BOOLEAN NOT NULL DEFAULT FALSE,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_ledger_actor_idemp
+  ON stock_ledger(actor_user_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_balance_dims
+  ON stock_ledger(clinic_id, location_id, item_master_id, lot_id, occurred_at DESC);
+
+INSERT INTO organizations (code, name)
+VALUES ('DEFAULT_ORG', 'Default Organization')
+ON CONFLICT (code) DO NOTHING;
+
+WITH org_ref AS (
+  SELECT id AS org_id FROM organizations WHERE code = 'DEFAULT_ORG' ORDER BY id LIMIT 1
+)
+INSERT INTO clinics (org_id, code, name)
+SELECT org_ref.org_id, 'CLINIC01', 'Clinic 01'
+FROM org_ref
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM clinics
+  WHERE clinics.org_id = org_ref.org_id
+    AND clinics.code = 'CLINIC01'
+);
+
+WITH clinic_ref AS (
+  SELECT id AS clinic_id FROM clinics WHERE code = 'CLINIC01' ORDER BY id LIMIT 1
+)
+INSERT INTO locations (clinic_id, code, name, location_type)
+SELECT clinic_ref.clinic_id, 'MAIN', 'Main Warehouse', 'WAREHOUSE'
+FROM clinic_ref
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM locations
+  WHERE locations.clinic_id = clinic_ref.clinic_id
+    AND locations.code = 'MAIN'
+);
+
+WITH org_ref AS (
+  SELECT id AS org_id FROM organizations WHERE code = 'DEFAULT_ORG' ORDER BY id LIMIT 1
+),
+clinic_ref AS (
+  SELECT id AS clinic_id FROM clinics WHERE code = 'CLINIC01' AND org_id = (SELECT org_id FROM org_ref) ORDER BY id LIMIT 1
+)
+UPDATE users u
+SET org_id = COALESCE(u.org_id, (SELECT org_id FROM org_ref)),
+    home_clinic_id = COALESCE(u.home_clinic_id, (SELECT clinic_id FROM clinic_ref))
+WHERE u.org_id IS NULL OR u.home_clinic_id IS NULL;
+
+INSERT INTO item_master (sku_code, name, active, created_at, updated_at)
+SELECT i.sku_code, i.name, TRUE, NOW(), NOW()
+FROM items i
+ON CONFLICT (sku_code) DO UPDATE SET
+  name = EXCLUDED.name,
+  updated_at = NOW();
+
+/* ---------------------------
    LOT + EXPIRY MANAGEMENT
 ---------------------------- */
 
