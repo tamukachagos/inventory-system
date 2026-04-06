@@ -4358,6 +4358,39 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
       });
     }
 
+    if (transferSchemaReady) {
+      const scope = await getUserClinicScope({ client, userId: req.user.id });
+      const scopedClinicId = Number(scope.home_clinic_id || 0);
+      const scopedOrgId = Number(scope.org_id || 0);
+      const effectiveClinicId = clinicId || (scopedClinicId > 0 ? scopedClinicId : null);
+      if (effectiveClinicId && scopedOrgId > 0) {
+        const itemMasterId = await ensureItemMasterForItem({ client, itemId: item_id });
+        if (itemMasterId) {
+          await client.query(
+            `INSERT INTO stock_ledger
+             (org_id, clinic_id, item_master_id, movement_type, qty_delta, reason_code, movement_source, correlation_id, idempotency_key, actor_user_id, allow_negative, metadata, occurred_at)
+             VALUES ($1, $2, $3, 'RECEIPT', $4, $5, $6, $7, $8, $9, FALSE, $10, NOW())`,
+            [
+              scopedOrgId,
+              effectiveClinicId,
+              itemMasterId,
+              quantity,
+              reasonCode,
+              movementSource,
+              correlationId,
+              idempotencyKey,
+              req.user.id,
+              {
+                item_id,
+                vendor: vendor || null,
+                batch_number: batch_number || null,
+              },
+            ]
+          );
+        }
+      }
+    }
+
     await client.query('COMMIT');
     releasePoolClient(client);
 
@@ -6041,6 +6074,39 @@ app.post('/stock-in-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next)
         expiryDate,
         qtyDelta: quantity,
       });
+    }
+
+    if (transferSchemaReady) {
+      const scope = await getUserClinicScope({ client, userId: req.user.id });
+      const scopedClinicId = Number(scope.home_clinic_id || 0);
+      const scopedOrgId = Number(scope.org_id || 0);
+      const effectiveClinicId = clinicId || (scopedClinicId > 0 ? scopedClinicId : null);
+      if (effectiveClinicId && scopedOrgId > 0) {
+        const itemMasterId = await ensureItemMasterForItem({ client, itemId: item_id });
+        if (itemMasterId) {
+          await client.query(
+            `INSERT INTO stock_ledger
+             (org_id, clinic_id, item_master_id, movement_type, qty_delta, reason_code, movement_source, correlation_id, idempotency_key, actor_user_id, allow_negative, metadata, occurred_at)
+             VALUES ($1, $2, $3, 'RECEIPT', $4, $5, $6, $7, $8, $9, FALSE, $10, NOW())`,
+            [
+              scopedOrgId,
+              effectiveClinicId,
+              itemMasterId,
+              quantity,
+              reasonCode,
+              movementSource,
+              correlationId,
+              idempotencyKey,
+              req.user.id,
+              {
+                item_id,
+                vendor: vendor || null,
+                batch_number: batch_number || null,
+              },
+            ]
+          );
+        }
+      }
     }
 
     await client.query('COMMIT');
