@@ -47,12 +47,12 @@ test.describe('Core UI reliability flows', () => {
     await page.getByRole('button', { name: 'Check In' }).click();
     await expect(page.getByText('created.')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Stock In' }).click();
+    await page.getByRole('button', { name: 'Stock In' }).first().click();
     await expect(page.getByText('Stock In by Scan')).toBeVisible();
     await page.getByLabel('Item Barcode').fill(`E2E-SKU-${Date.now()}`);
     await page.getByLabel('Item Name').fill('E2E Stock Item');
     await page.getByLabel('Quantity').fill('4');
-    await page.getByRole('button', { name: 'Stock In' }).click();
+    await page.getByRole('button', { name: 'Stock In' }).last().click();
     await expect(page.getByText('Stock-in scan recorded.')).toBeVisible();
   });
 
