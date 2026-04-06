@@ -1364,7 +1364,7 @@ const buildClinicDigestPayload = async ({ client, clinicId }) => {
 
 const processDailyExpiryDigests = async () => {
   await ensureLotExpirySchema();
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await client.query('BEGIN');
     const clinics = await client.query(
@@ -2173,6 +2173,12 @@ const beginInventoryTxn = async (client) => {
   await client.query('SET LOCAL TRANSACTION ISOLATION LEVEL READ COMMITTED');
 };
 
+const acquirePoolClient = async () => {
+  const client = await pool.connect();
+  client.__released = false;
+  return client;
+};
+
 const releasePoolClient = (client) => {
   if (!client || client.__released) return;
   client.release();
@@ -2523,7 +2529,7 @@ const importPurchaseRows = async ({
     error.validationErrors = validationErrors;
     throw error;
   }
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await client.query('BEGIN');
 
@@ -2680,7 +2686,7 @@ const processPrintJob = async ({ jobId, printerIp, printerPort, zpl }) => {
 };
 
 const processQueuedPrintJobs = async (batchSize = PRINT_WORKER_BATCH_SIZE) => {
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   let processed = 0;
   try {
     while (processed < batchSize) {
@@ -3808,7 +3814,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     return;
   }
 
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await ensureLotExpirySchema();
@@ -3978,7 +3984,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     return;
   }
 
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await ensureLotExpirySchema();
@@ -4176,7 +4182,7 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     return;
   }
 
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await ensureLotExpirySchema();
@@ -4283,7 +4289,7 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     return;
   }
 
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await ensureLotExpirySchema();
@@ -5153,7 +5159,7 @@ app.post('/sync/ack', requireRole('ADMIN', 'STAFF'), validateRequest({ body: syn
 
 app.post('/sync/push', requireRole('ADMIN', 'STAFF'), validateRequest({ body: syncPushSchema }), async (req, res, next) => {
   const { device_id, actions } = req.body;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureSyncSchema();
     const results = [];
@@ -5703,7 +5709,7 @@ app.post('/cycle-counts/random-pick', requireRole('ADMIN', 'STAFF'), async (req,
   }
 
   const { item_count, notes } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await client.query('BEGIN');
 
@@ -5826,7 +5832,7 @@ app.post('/cycle-counts/:id/approve', requireRole('ADMIN'), validateRequest({ pa
   }
 
   const { decision, notes, apply_adjustments } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await beginInventoryTxn(client);
@@ -5957,7 +5963,7 @@ app.post('/stock-in-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next)
     return;
   }
 
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await ensureLotExpirySchema();
@@ -6103,7 +6109,7 @@ app.post('/return-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     return;
   }
 
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureMovementSchema();
     await beginInventoryTxn(client);
@@ -6651,7 +6657,7 @@ app.post('/transfers/requests', requireRole('ADMIN', 'STAFF'), async (req, res, 
   if (!idempotencyKey) return;
 
   const { from_clinic_id, to_clinic_id, needed_by, notes, items } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureTransferSchema();
     await client.query('BEGIN');
@@ -6794,7 +6800,7 @@ app.get('/transfers/requests', requireRole('ADMIN', 'STAFF'), validateRequest({ 
 });
 
 app.get('/transfers/requests/:id', requireRole('ADMIN', 'STAFF'), validateRequest({ params: transferActionParamSchema }), async (req, res, next) => {
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureTransferSchema();
     const scope = await getUserClinicScope({ client, userId: req.user.id });
@@ -6821,7 +6827,7 @@ app.post('/transfers/:id/approve', requireRole('ADMIN'), validateRequest({ param
 
   const transferId = req.params.id;
   const { decision, lines, notes } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureTransferSchema();
     await client.query('BEGIN');
@@ -6936,7 +6942,7 @@ app.post('/transfers/:id/pick-pack', requireRole('ADMIN', 'STAFF'), validateRequ
 
   const transferId = req.params.id;
   const { lines, notes } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureTransferSchema();
     await ensureMovementSchema();
@@ -7121,7 +7127,7 @@ app.post('/transfers/:id/receive', requireRole('ADMIN', 'STAFF'), validateReques
 
   const transferId = req.params.id;
   const { lines, notes } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureTransferSchema();
     await ensureMovementSchema();
