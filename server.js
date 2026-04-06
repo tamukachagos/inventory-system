@@ -2167,7 +2167,9 @@ const idempotencyKeyFromRequest = (req) =>
   sanitizeTokenLikeValue(req.headers['idempotency-key'] || req.headers['x-idempotency-key'], null);
 
 const beginInventoryTxn = async (client) => {
+  if (client.__txActive) return;
   await client.query('BEGIN');
+  client.__txActive = true;
   // These movement routes already take explicit row locks and bounded updates.
   // READ COMMITTED avoids spurious 40001 aborts under normal concurrent stock activity.
   await client.query('SET LOCAL TRANSACTION ISOLATION LEVEL READ COMMITTED');
@@ -2176,7 +2178,20 @@ const beginInventoryTxn = async (client) => {
 const acquirePoolClient = async () => {
   const client = await pool.connect();
   client.__released = false;
+  client.__txActive = false;
   return client;
+};
+
+const commitPoolTransaction = async (client) => {
+  if (!client || !client.__txActive) return;
+  await client.query('COMMIT');
+  client.__txActive = false;
+};
+
+const rollbackPoolTransaction = async (client) => {
+  if (!client || !client.__txActive) return;
+  await client.query('ROLLBACK');
+  client.__txActive = false;
 };
 
 const releasePoolClient = (client) => {
@@ -3822,7 +3837,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     await lockMovementIdempotencyKey({ client, actorUserId: user_id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: user_id, idempotencyKey });
     if (replayed) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.json({ ...replayed, idempotent_replay: true });
     }
 
@@ -3838,7 +3853,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       [item_id]
     );
     if (itemMeta.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(404).send('Item not found');
     }
     const isExpiryTracked = Boolean(itemMeta.rows[0].expiry_tracked);
@@ -3853,7 +3868,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
         allowExpired: false,
       });
       if (fefo.remaining > 0) {
-        await client.query('ROLLBACK');
+        await rollbackPoolTransaction(client);
         return res.status(400).json({
           error: 'Insufficient non-expired lot stock for FEFO issue',
           remaining_unfulfilled_qty: fefo.remaining,
@@ -3872,7 +3887,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     );
     if (decremented.rows.length === 0) {
       const itemExists = await client.query('SELECT id FROM items WHERE id = $1', [item_id]);
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       if (itemExists.rows.length === 0) return res.status(404).send('Item not found');
       return res.status(400).send('Insufficient stock');
     }
@@ -3926,7 +3941,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       movementRows.push(movement);
     }
 
-    await client.query('COMMIT');
+    await commitPoolTransaction(client);
     releasePoolClient(client);
 
     await writeAuditLog(req, {
@@ -3956,7 +3971,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
 
   } catch (err) {
     if (!client.__released) {
-      try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+      try { await rollbackPoolTransaction(client); } catch (e) { console.error('ROLLBACK ERROR:', e); }
     }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
@@ -3995,7 +4010,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       [encounter_code]
     );
     if (encounterResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(404).json({ error: 'Encounter not found' });
     }
     const encounter = encounterResult.rows[0];
@@ -4007,7 +4022,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       [item_barcode]
     );
     if (itemResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(404).json({ error: 'Item barcode not found' });
     }
     const item = itemResult.rows[0];
@@ -4017,20 +4032,20 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       [operator_card]
     );
     if (operatorResult.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(404).json({ error: 'Operator card not found' });
     }
     const operator = operatorResult.rows[0];
     await lockMovementIdempotencyKey({ client, actorUserId: operator.id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: operator.id, idempotencyKey });
     if (replayed) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.json({ status: 'ok', idempotent_replay: true, transaction: replayed, encounter, item, operator });
     }
 
     const linked = await isCardLinkedToEncounter(encounter.id, operator_card);
     if (!linked) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(403).json({ error: 'Operator card is not linked to this encounter' });
     }
 
@@ -4045,7 +4060,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
         allowExpired: false,
       });
       if (fefo.remaining > 0) {
-        await client.query('ROLLBACK');
+        await rollbackPoolTransaction(client);
         return res.status(400).json({
           error: 'Insufficient non-expired lot stock for FEFO issue',
           remaining_unfulfilled_qty: fefo.remaining,
@@ -4063,7 +4078,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       [quantity, item.id]
     );
     if (decrement.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(400).json({ error: 'Insufficient stock' });
     }
 
@@ -4115,7 +4130,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       });
       transactions.push(tx);
     }
-    await client.query('COMMIT');
+    await commitPoolTransaction(client);
     releasePoolClient(client);
 
     await writeAuditLog(req, {
@@ -4154,7 +4169,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     });
   } catch (err) {
     if (!client.__released) {
-      try { await client.query('ROLLBACK'); } catch (_) {}
+      try { await rollbackPoolTransaction(client); } catch (_) {}
     }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
@@ -4190,7 +4205,7 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     await lockMovementIdempotencyKey({ client, actorUserId: user_id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: user_id, idempotencyKey });
     if (replayed) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.json({ ...replayed, idempotent_replay: true });
     }
 
@@ -4201,11 +4216,11 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
       [quantity, item_id]
     );
     if (updated.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(404).send('Item not found');
     }
     if (updated.rows[0].expiry_tracked && !lotCode) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(400).json({ error: 'lot_code header is required for expiry-tracked return' });
     }
 
@@ -4237,7 +4252,7 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
       });
     }
 
-    await client.query('COMMIT');
+    await commitPoolTransaction(client);
     releasePoolClient(client);
 
     await writeAuditLog(req, {
@@ -4255,7 +4270,7 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
 
   } catch (err) {
     if (!client.__released) {
-      try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+      try { await rollbackPoolTransaction(client); } catch (e) { console.error('ROLLBACK ERROR:', e); }
     }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
@@ -4297,7 +4312,7 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     await lockMovementIdempotencyKey({ client, actorUserId: req.user.id, idempotencyKey });
     const replayed = await findIdempotentMovement({ client, actorUserId: req.user.id, idempotencyKey });
     if (replayed) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.json({ ...replayed, idempotent_replay: true });
     }
 
@@ -4309,11 +4324,11 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     );
 
     if (stockCheck.rows.length === 0) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(404).send('Item not found');
     }
     if (stockCheck.rows[0].expiry_tracked && (!lotCode || !expiryDate)) {
-      await client.query('ROLLBACK');
+      await rollbackPoolTransaction(client);
       return res.status(400).json({ error: 'lot_code and expiry_date are required for expiry-tracked items' });
     }
 
@@ -4391,7 +4406,7 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
       }
     }
 
-    await client.query('COMMIT');
+    await commitPoolTransaction(client);
     releasePoolClient(client);
 
     // Optionally log vendor/batch_number as application metadata
@@ -4426,7 +4441,7 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (!client.__released) {
-      try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+      try { await rollbackPoolTransaction(client); } catch (e) { console.error('ROLLBACK ERROR:', e); }
     }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
