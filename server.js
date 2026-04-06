@@ -1046,7 +1046,7 @@ const ensureTransferSchema = async () => {
   );
   await pool.query(
     `INSERT INTO item_master (sku_code, name, active, created_at, updated_at)
-     SELECT i.sku_code, i.name, COALESCE(i.active, TRUE), COALESCE(i.created_at, NOW()), NOW()
+     SELECT i.sku_code, i.name, TRUE, NOW(), NOW()
      FROM items i
      ON CONFLICT (sku_code) DO UPDATE
      SET name = EXCLUDED.name,
