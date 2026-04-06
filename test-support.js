@@ -1,6 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -44,6 +45,26 @@ const waitForHealth = async (baseUrl, retries = 120, delayMs = 250) => {
   return false;
 };
 
+const waitForPort = async (port, host = '127.0.0.1', retries = 120, delayMs = 250) => {
+  for (let i = 0; i < retries; i += 1) {
+    const connected = await new Promise((resolve) => {
+      const socket = net.createConnection({ port, host });
+      const finish = (result) => {
+        socket.removeAllListeners();
+        socket.destroy();
+        resolve(result);
+      };
+      socket.setTimeout(500);
+      socket.once('connect', () => finish(true));
+      socket.once('timeout', () => finish(false));
+      socket.once('error', () => finish(false));
+    });
+    if (connected) return true;
+    await wait(delayMs);
+  }
+  return false;
+};
+
 const startServer = async (port) => {
   const stdout = createOutputBuffer();
   const stderr = createOutputBuffer();
@@ -59,7 +80,8 @@ const startServer = async (port) => {
     exitInfo = { code, signal };
   });
   const baseUrl = `http://127.0.0.1:${port}`;
-  const ready = await waitForHealth(baseUrl);
+  const portReady = await waitForPort(port);
+  const ready = portReady || await waitForHealth(baseUrl);
   if (!ready) {
     proc.kill('SIGTERM');
     const serverLogs = [stdout.dump(), stderr.dump()].filter(Boolean).join('\n');
@@ -91,6 +113,11 @@ const request = async (baseUrl, method, route, { token, body, headers: extraHead
       },
       body: typeof body === 'undefined' ? undefined : JSON.stringify(body),
     });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error(`Request timed out: ${method} ${route}`);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
