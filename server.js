@@ -3910,6 +3910,7 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     }
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'ISSUE_ITEM',
@@ -5894,6 +5895,7 @@ app.post('/cycle-counts/:id/approve', requireRole('ADMIN'), validateRequest({ pa
     );
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'CYCLE_COUNT_APPROVAL_DECISION',
