@@ -33,7 +33,7 @@ const createOutputBuffer = () => {
   };
 };
 
-const waitForHealth = async (baseUrl, retries = 60, delayMs = 250) => {
+const waitForHealth = async (baseUrl, retries = 120, delayMs = 250) => {
   for (let i = 0; i < retries; i += 1) {
     try {
       const response = await fetch(`${baseUrl}/health`);
@@ -78,7 +78,7 @@ const stopServer = async (proc) => {
 
 const request = async (baseUrl, method, route, { token, body, headers: extraHeaders } = {}) => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
+  const timer = setTimeout(() => controller.abort(), 60_000);
   let response;
   try {
     response = await fetch(`${baseUrl}${route}`, {

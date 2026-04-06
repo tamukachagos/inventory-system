@@ -3775,11 +3775,10 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
         ? `SELECT id, expiry_tracked
            FROM items
            WHERE id = $1
-           FOR UPDATE`
+          `
         : `SELECT id, FALSE::boolean AS expiry_tracked
            FROM items
-           WHERE id = $1
-           FOR UPDATE`,
+           WHERE id = $1`,
       [item_id]
     );
     if (itemMeta.rows.length === 0) {

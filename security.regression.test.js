@@ -64,6 +64,7 @@ const login = async (studentCard, password) => {
   return {
     token: result.json.token,
     refreshToken: result.json.refresh_token,
+    user: result.json.user,
   };
 };
 
@@ -147,7 +148,8 @@ test.after(async () => {
 });
 
 test('mass assignment is blocked on issue-item user_id spoof', async () => {
-  const { token } = await login('STU-001', 'Test1234!');
+  const session = await login('STU-001', 'Test1234!');
+  const { token } = session;
 
   const checkin = await request('POST', '/check-in', {
     token,
@@ -170,7 +172,7 @@ test('mass assignment is blocked on issue-item user_id spoof', async () => {
     },
   });
   assert.equal(issue.status, 200, issue.text);
-  assert.equal(Number(issue.json.user_id), 1);
+  assert.equal(Number(issue.json.user_id), Number(session.user.id));
 });
 
 test('print job retry forbids non-owner', async () => {
