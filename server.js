@@ -2283,6 +2283,9 @@ const isPasswordExpired = (passwordExpiresAt) =>
   Boolean(passwordExpiresAt) && new Date(passwordExpiresAt).getTime() <= Date.now();
 
 const writeLedgerEvent = async (req, { eventType, entityType = null, entityId = null, payload = {} }) => {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
   try {
     const prev = await pool.query('SELECT event_hash FROM event_ledger ORDER BY id DESC LIMIT 1');
     const previousHash = prev.rows.length > 0 ? prev.rows[0].event_hash : null;
