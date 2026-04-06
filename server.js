@@ -6723,7 +6723,7 @@ app.post('/transfers/requests', requireRole('ADMIN', 'STAFF'), async (req, res, 
     const payload = await loadTransferWithLines({ client, transferId });
     await saveTransferActionReplay({
       client,
-      transferRequestId: transferId,
+      transferRequestId: null,
       actorUserId: req.user.id,
       actionName: 'CREATE_REQUEST',
       idempotencyKey,
