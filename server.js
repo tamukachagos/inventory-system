@@ -108,12 +108,14 @@ const ipRateLimit = rateLimit({
   max: Number(process.env.RATE_LIMIT_MAX || 180),
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'test' || req.path === '/health' || req.path === '/health/db',
 });
 const loginRateLimit = rateLimit({
   windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || 15 * 60_000),
   max: Number(process.env.LOGIN_RATE_LIMIT_MAX || 12),
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
 });
 app.use(ipRateLimit);
 
@@ -2160,6 +2162,12 @@ const beginInventoryTxn = async (client) => {
   await client.query('SET LOCAL TRANSACTION ISOLATION LEVEL READ COMMITTED');
 };
 
+const releasePoolClient = (client) => {
+  if (!client || client.__released) return;
+  client.release();
+  client.__released = true;
+};
+
 const isSerializationFailure = (err) =>
   Boolean(err) && (
     err.code === '40001'
@@ -2572,6 +2580,7 @@ const importPurchaseRows = async ({
     );
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'PURCHASE_IMPORT',
@@ -3925,13 +3934,15 @@ app.post('/issue-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
     });
 
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
     }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -4084,6 +4095,7 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       transactions.push(tx);
     }
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'ISSUE_SCAN',
@@ -4120,13 +4132,15 @@ app.post('/issue-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =>
       operator,
     });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
     }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -4203,6 +4217,7 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     }
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'RETURN_ITEM',
@@ -4218,13 +4233,15 @@ app.post('/return-item', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     res.json(movement);
 
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
     }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -4321,6 +4338,7 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
     }
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     // Optionally log vendor/batch_number as application metadata
     if (vendor || batch_number) {
@@ -4353,13 +4371,15 @@ app.post('/stock-in', requireRole('ADMIN', 'STAFF'), async (req, res, next) => {
 
     res.json(result);
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (e) { console.error('ROLLBACK ERROR:', e); }
+    }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
     }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -5701,6 +5721,7 @@ app.post('/cycle-counts/random-pick', requireRole('ADMIN', 'STAFF'), async (req,
     }
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'CYCLE_COUNT_RANDOM_PICK',
@@ -5889,13 +5910,15 @@ app.post('/cycle-counts/:id/approve', requireRole('ADMIN'), validateRequest({ pa
       adjustments_applied: decision === 'APPROVED' && apply_adjustments,
     });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     if (isSerializationFailure(err)) {
       return res.status(400).json({ error: 'Concurrent inventory update conflicted; retry request' });
     }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -5999,6 +6022,7 @@ app.post('/stock-in-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next)
     }
 
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     let label = null;
     if (print_new_label || existing.rows.length === 0) {
@@ -6038,10 +6062,12 @@ app.post('/stock-in-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next)
       label,
     });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -6142,6 +6168,7 @@ app.post('/return-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
       allowNegative: false,
     });
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'RETURN_SCAN',
@@ -6155,10 +6182,12 @@ app.post('/return-scan', requireRole('ADMIN', 'STAFF'), async (req, res, next) =
     });
     return res.json({ status: 'ok', transaction: tx, encounter, item, operator });
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -6680,6 +6709,7 @@ app.post('/transfers/requests', requireRole('ADMIN', 'STAFF'), async (req, res, 
     });
 
     await client.query('COMMIT');
+    releasePoolClient(client);
     await writeAuditLog(req, {
       action: 'TRANSFER_REQUEST_CREATED',
       details: { transfer_request_id: transferId, from_clinic_id, to_clinic_id, line_count: items.length },
@@ -6692,10 +6722,12 @@ app.post('/transfers/requests', requireRole('ADMIN', 'STAFF'), async (req, res, 
     });
     return res.json(payload);
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -6855,6 +6887,7 @@ app.post('/transfers/:id/approve', requireRole('ADMIN'), validateRequest({ param
       responseJson: updated,
     });
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'TRANSFER_REQUEST_APPROVED',
@@ -6868,10 +6901,12 @@ app.post('/transfers/:id/approve', requireRole('ADMIN'), validateRequest({ param
     });
     return res.json(updated);
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -7037,6 +7072,7 @@ app.post('/transfers/:id/pick-pack', requireRole('ADMIN', 'STAFF'), validateRequ
       responseJson: updated,
     });
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'TRANSFER_PICK_PACK',
@@ -7050,10 +7086,12 @@ app.post('/transfers/:id/pick-pack', requireRole('ADMIN', 'STAFF'), validateRequ
     });
     return res.json(updated);
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -7193,6 +7231,7 @@ app.post('/transfers/:id/receive', requireRole('ADMIN', 'STAFF'), validateReques
       responseJson: updated,
     });
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'TRANSFER_RECEIVE',
@@ -7206,10 +7245,12 @@ app.post('/transfers/:id/receive', requireRole('ADMIN', 'STAFF'), validateReques
     });
     return res.json(updated);
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
@@ -7354,6 +7395,7 @@ app.post('/transfers/:id/cancel', requireRole('ADMIN', 'STAFF'), validateRequest
       responseJson: updated,
     });
     await client.query('COMMIT');
+    releasePoolClient(client);
 
     await writeAuditLog(req, {
       action: 'TRANSFER_CANCEL',
@@ -7367,10 +7409,12 @@ app.post('/transfers/:id/cancel', requireRole('ADMIN', 'STAFF'), validateRequest
     });
     return res.json(updated);
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (_) {}
+    if (!client.__released) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+    }
     next(err);
   } finally {
-    client.release();
+    releasePoolClient(client);
   }
 });
 
