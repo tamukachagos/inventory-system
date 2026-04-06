@@ -6,7 +6,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const net = require('net');
 const crypto = require('crypto');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const bcrypt = require('bcryptjs');
 const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
@@ -2313,6 +2313,71 @@ const parseCsvRows = (csvText) => {
     });
     rows.push(row);
   }
+  return rows;
+};
+
+const normalizeExcelCellValue = (value) => {
+  if (value === null || typeof value === 'undefined') return '';
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    return value.map((part) => normalizeExcelCellValue(part)).join('');
+  }
+  if (typeof value === 'object') {
+    if (Object.prototype.hasOwnProperty.call(value, 'result')) {
+      return normalizeExcelCellValue(value.result);
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'text')) {
+      return normalizeExcelCellValue(value.text);
+    }
+    if (Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text || '').join('');
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'hyperlink') && Object.prototype.hasOwnProperty.call(value, 'text')) {
+      return normalizeExcelCellValue(value.text);
+    }
+    return String(value);
+  }
+  return value;
+};
+
+const parseWorksheetRows = (worksheet) => {
+  const columnCount = worksheet.columnCount || worksheet.actualColumnCount || 0;
+  if (columnCount === 0 || worksheet.actualRowCount < 2) {
+    return [];
+  }
+
+  const headers = [];
+  for (let col = 1; col <= columnCount; col += 1) {
+    const headerValue = normalizeExcelCellValue(worksheet.getRow(1).getCell(col).value);
+    headers.push(String(headerValue || '').trim().toLowerCase());
+  }
+
+  if (!headers.some(Boolean)) {
+    return [];
+  }
+
+  const rows = [];
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return;
+
+    const out = {};
+    let hasData = false;
+    for (let col = 1; col <= columnCount; col += 1) {
+      const header = headers[col - 1];
+      if (!header) continue;
+      const rawValue = normalizeExcelCellValue(row.getCell(col).value);
+      const value = rawValue === null || typeof rawValue === 'undefined' ? '' : rawValue;
+      if (value !== '') {
+        hasData = true;
+      }
+      out[header] = value;
+    }
+
+    if (hasData) {
+      rows.push(out);
+    }
+  });
+
   return rows;
 };
 
@@ -6076,16 +6141,17 @@ app.post('/imports/purchases/xlsx', requireRole('ADMIN', 'STAFF'), async (req, r
     }
 
     const binary = Buffer.from(file_base64, 'base64');
-    const workbook = XLSX.read(binary, { type: 'buffer' });
-    const selectedSheet = sheet_name && workbook.Sheets[sheet_name]
-      ? sheet_name
-      : workbook.SheetNames[0];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(binary);
+    const worksheet = sheet_name
+      ? workbook.getWorksheet(sheet_name)
+      : workbook.worksheets[0];
 
-    if (!selectedSheet) {
+    if (!worksheet) {
       return res.status(400).json({ error: 'Excel file has no sheets' });
     }
 
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[selectedSheet], { defval: '' });
+    const rows = parseWorksheetRows(worksheet);
     if (rows.length === 0) {
       return res.status(400).json({ error: 'Selected sheet has no data rows' });
     }
@@ -6097,7 +6163,7 @@ app.post('/imports/purchases/xlsx', requireRole('ADMIN', 'STAFF'), async (req, r
       autoCreateItems: auto_create_items,
       template,
     });
-    return res.json({ ...result, sheet_name: selectedSheet, template_id: template ? template.id : null });
+    return res.json({ ...result, sheet_name: worksheet.name, template_id: template ? template.id : null });
   } catch (err) {
     if (err && Array.isArray(err.validationErrors)) {
       return res.status(400).json({
