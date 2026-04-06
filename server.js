@@ -724,6 +724,7 @@ const ensureMovementSchema = async () => {
         ADD COLUMN IF NOT EXISTS lot_code VARCHAR(120),
         ADD COLUMN IF NOT EXISTS allow_negative BOOLEAN NOT NULL DEFAULT FALSE`
     );
+    await pool.query(`DROP TRIGGER IF EXISTS trg_inventory_transactions_immutable ON inventory_transactions`);
     await pool.query(
       `UPDATE inventory_transactions it
        SET movement_actor_id = COALESCE(
@@ -735,7 +736,8 @@ const ensureMovementSchema = async () => {
     );
     await pool.query(
       `UPDATE inventory_transactions
-       SET correlation_id = COALESCE(correlation_id, CONCAT('legacy-', id))`
+       SET correlation_id = CONCAT('legacy-', id)
+       WHERE correlation_id IS NULL`
     );
     await pool.query(`ALTER TABLE inventory_transactions ALTER COLUMN movement_actor_id SET NOT NULL`);
     await pool.query(`ALTER TABLE inventory_transactions ALTER COLUMN correlation_id SET NOT NULL`);
@@ -775,7 +777,13 @@ const ensureMovementSchema = async () => {
       `DO $$
        BEGIN
          IF EXISTS (
-           SELECT 1 FROM pg_constraint WHERE conname = 'inventory_transactions_type_check'
+           SELECT 1
+           FROM pg_constraint c
+           JOIN pg_class t ON t.oid = c.conrelid
+           JOIN pg_namespace n ON n.oid = t.relnamespace
+           WHERE c.conname = 'inventory_transactions_type_check'
+             AND t.relname = 'inventory_transactions'
+             AND n.nspname = current_schema()
          ) THEN
            ALTER TABLE inventory_transactions DROP CONSTRAINT inventory_transactions_type_check;
          END IF;

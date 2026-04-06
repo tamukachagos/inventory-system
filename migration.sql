@@ -129,6 +129,8 @@ ALTER TABLE inventory_transactions
   ADD COLUMN IF NOT EXISTS lot_code VARCHAR(120),
   ADD COLUMN IF NOT EXISTS allow_negative BOOLEAN NOT NULL DEFAULT FALSE;
 
+DROP TRIGGER IF EXISTS trg_inventory_transactions_immutable ON inventory_transactions;
+
 UPDATE inventory_transactions it
 SET movement_actor_id = COALESCE(
   it.user_id,
@@ -152,8 +154,12 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'inventory_transactions_type_check'
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE c.conname = 'inventory_transactions_type_check'
+      AND t.relname = 'inventory_transactions'
+      AND n.nspname = current_schema()
   ) THEN
     ALTER TABLE inventory_transactions DROP CONSTRAINT inventory_transactions_type_check;
   END IF;
@@ -163,8 +169,12 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'inventory_transactions_type_check'
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE c.conname = 'inventory_transactions_type_check'
+      AND t.relname = 'inventory_transactions'
+      AND n.nspname = current_schema()
   ) THEN
     ALTER TABLE inventory_transactions
       ADD CONSTRAINT inventory_transactions_type_check
@@ -189,7 +199,6 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_inventory_transactions_immutable ON inventory_transactions;
 CREATE TRIGGER trg_inventory_transactions_immutable
 BEFORE UPDATE OR DELETE ON inventory_transactions
 FOR EACH ROW
