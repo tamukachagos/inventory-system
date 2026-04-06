@@ -7710,6 +7710,10 @@ app.use((err, req, res, next) => {
 const PORT = Number(process.env.PORT || 5000);
 
 const startBackgroundWorkers = () => {
+  if (process.env.NODE_ENV === 'test' && process.env.ENABLE_TEST_BACKGROUND_WORKERS !== 'true') {
+    console.log('Background workers disabled in test mode');
+    return;
+  }
   if (PRINT_WORKER_ENABLED) {
     printWorkerState.timer = setInterval(async () => {
       if (printWorkerState.running) return;

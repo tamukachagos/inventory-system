@@ -95,7 +95,20 @@ const startServer = async (port) => {
 
 const stopServer = async (proc) => {
   if (!proc) return;
+  const exited = new Promise((resolve) => {
+    proc.once('exit', () => resolve());
+  });
   proc.kill('SIGTERM');
+  const timeout = setTimeout(() => {
+    if (!proc.killed) {
+      proc.kill('SIGKILL');
+    }
+  }, 5_000);
+  try {
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 const request = async (baseUrl, method, route, { token, body, headers: extraHeaders } = {}) => {

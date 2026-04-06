@@ -79,20 +79,19 @@ const enforceSafetyChecks = async (client) => {
 (async () => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query(`SET LOCAL lock_timeout = '${lockTimeout}'`);
-    await client.query(`SET LOCAL statement_timeout = '${statementTimeout}'`);
-    await client.query('SELECT pg_advisory_xact_lock($1)', [migrationLockKey]);
+    await client.query(`SET lock_timeout = '${lockTimeout}'`);
+    await client.query(`SET statement_timeout = '${statementTimeout}'`);
+    await client.query('SELECT pg_advisory_lock($1)', [migrationLockKey]);
 
     await ensureSchemaVersioning(client);
     const safety = await enforceSafetyChecks(client);
     if (safety.alreadyApplied) {
-      await client.query('ROLLBACK');
       console.log(`Migration skipped: version already applied (${versionTag}, checksum=${sqlChecksum.slice(0, 12)}...)`);
       return;
     }
 
     await client.query(sql);
+    await client.query('BEGIN');
     await client.query(
       `INSERT INTO schema_versions (version_tag, checksum, applied_by, notes)
        VALUES ($1, $2, $3, $4)`,
@@ -105,6 +104,7 @@ const enforceSafetyChecks = async (client) => {
     console.error('Migration failed:', err && err.message ? err.message : err);
     process.exitCode = 1;
   } finally {
+    try { await client.query('SELECT pg_advisory_unlock($1)', [migrationLockKey]); } catch (_) {}
     client.release();
     await pool.end();
   }
