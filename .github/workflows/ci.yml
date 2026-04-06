@@ -114,6 +114,8 @@ jobs:
         run: npm run db:migrate
       - name: Seed test users
         run: npm run db:seed:test
+      - name: Build frontend
+        run: npm run build
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       - name: Run E2E
