@@ -6837,10 +6837,6 @@ app.post('/transfers/:id/approve', requireRole('ADMIN'), validateRequest({ param
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Transfer request not found' });
     }
-    if (payload.transfer.status !== 'PENDING') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Transfer cannot be approved from status ${payload.transfer.status}` });
-    }
 
     const replay = await findTransferActionReplay({
       client,
@@ -6852,6 +6848,11 @@ app.post('/transfers/:id/approve', requireRole('ADMIN'), validateRequest({ param
     if (replay) {
       await client.query('ROLLBACK');
       return res.json({ ...replay, idempotent_replay: true });
+    }
+
+    if (payload.transfer.status !== 'PENDING') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Transfer cannot be approved from status ${payload.transfer.status}` });
     }
 
     if (decision === 'REJECT') {
@@ -6953,14 +6954,6 @@ app.post('/transfers/:id/pick-pack', requireRole('ADMIN', 'STAFF'), validateRequ
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Transfer request not found' });
     }
-    if (!enforceTransferScope({ req, scope, transfer: payload.transfer })) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Transfer request is outside your clinic scope' });
-    }
-    if (!['APPROVED', 'PARTIALLY_PICKED', 'IN_TRANSIT', 'PARTIALLY_CANCELLED'].includes(payload.transfer.status)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Transfer cannot be picked from status ${payload.transfer.status}` });
-    }
 
     const replay = await findTransferActionReplay({
       client,
@@ -6972,6 +6965,15 @@ app.post('/transfers/:id/pick-pack', requireRole('ADMIN', 'STAFF'), validateRequ
     if (replay) {
       await client.query('ROLLBACK');
       return res.json({ ...replay, idempotent_replay: true });
+    }
+
+    if (!enforceTransferScope({ req, scope, transfer: payload.transfer })) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Transfer request is outside your clinic scope' });
+    }
+    if (!['APPROVED', 'PARTIALLY_PICKED', 'IN_TRANSIT', 'PARTIALLY_CANCELLED'].includes(payload.transfer.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Transfer cannot be picked from status ${payload.transfer.status}` });
     }
 
     const lineMap = new Map(payload.lines.map((line) => [Number(line.item_id), line]));
@@ -7138,14 +7140,6 @@ app.post('/transfers/:id/receive', requireRole('ADMIN', 'STAFF'), validateReques
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Transfer request not found' });
     }
-    if (!enforceTransferScope({ req, scope, transfer: payload.transfer })) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Transfer request is outside your clinic scope' });
-    }
-    if (!['PARTIALLY_PICKED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED', 'PARTIALLY_CANCELLED'].includes(payload.transfer.status)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Transfer cannot be received from status ${payload.transfer.status}` });
-    }
 
     const replay = await findTransferActionReplay({
       client,
@@ -7157,6 +7151,15 @@ app.post('/transfers/:id/receive', requireRole('ADMIN', 'STAFF'), validateReques
     if (replay) {
       await client.query('ROLLBACK');
       return res.json({ ...replay, idempotent_replay: true });
+    }
+
+    if (!enforceTransferScope({ req, scope, transfer: payload.transfer })) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Transfer request is outside your clinic scope' });
+    }
+    if (!['PARTIALLY_PICKED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED', 'PARTIALLY_CANCELLED'].includes(payload.transfer.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Transfer cannot be received from status ${payload.transfer.status}` });
     }
 
     const lineMap = new Map(payload.lines.map((line) => [Number(line.item_id), line]));
@@ -7286,7 +7289,7 @@ app.post('/transfers/:id/cancel', requireRole('ADMIN', 'STAFF'), validateRequest
 
   const transferId = req.params.id;
   const { lines, reason } = parsed.data;
-  const client = await pool.connect();
+  const client = await acquirePoolClient();
   try {
     await ensureTransferSchema();
     await ensureMovementSchema();
@@ -7296,14 +7299,6 @@ app.post('/transfers/:id/cancel', requireRole('ADMIN', 'STAFF'), validateRequest
     if (!payload) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Transfer request not found' });
-    }
-    if (!enforceTransferScope({ req, scope, transfer: payload.transfer })) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Transfer request is outside your clinic scope' });
-    }
-    if (['CANCELLED', 'REJECTED', 'RECEIVED'].includes(payload.transfer.status)) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: `Transfer cannot be cancelled from status ${payload.transfer.status}` });
     }
 
     const replay = await findTransferActionReplay({
@@ -7316,6 +7311,15 @@ app.post('/transfers/:id/cancel', requireRole('ADMIN', 'STAFF'), validateRequest
     if (replay) {
       await client.query('ROLLBACK');
       return res.json({ ...replay, idempotent_replay: true });
+    }
+
+    if (!enforceTransferScope({ req, scope, transfer: payload.transfer })) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Transfer request is outside your clinic scope' });
+    }
+    if (['CANCELLED', 'REJECTED', 'RECEIVED'].includes(payload.transfer.status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Transfer cannot be cancelled from status ${payload.transfer.status}` });
     }
 
     const requestMap = new Map((lines || []).map((line) => [Number(line.item_id), parseNumeric(line.quantity)]));
