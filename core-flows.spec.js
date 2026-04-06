@@ -30,7 +30,7 @@ test.describe('Core UI reliability flows', () => {
 
   test('staff can login, check-in, and stock-in scan', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('CrimsonSupply Nexus')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CrimsonSupply Nexus' })).toBeVisible();
 
     await page.getByLabel('ID Card').fill('STU-001');
     await page.getByLabel('Password').fill('Test1234!');
