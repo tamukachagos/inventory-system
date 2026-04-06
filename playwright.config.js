@@ -1,7 +1,8 @@
 const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
-  testDir: './e2e',
+  testDir: '.',
+  testMatch: ['*.spec.js'],
   timeout: 45_000,
   expect: {
     timeout: 10_000,
@@ -23,7 +24,7 @@ module.exports = defineConfig({
       },
     },
     {
-      command: 'npm --prefix frontend run preview -- --host 127.0.0.1 --port 4173',
+      command: 'npm run preview -- --host 127.0.0.1 --port 4173',
       url: 'http://127.0.0.1:4173',
       reuseExistingServer: !process.env.CI,
     },

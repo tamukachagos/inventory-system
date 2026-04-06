@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = __dirname;
 
 const createPool = () =>
   new Pool({

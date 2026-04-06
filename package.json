@@ -5,10 +5,15 @@
     "scripts": {
         "dev": "vite",
         "build": "vite build",
-        "lint": "eslint .",
+        "lint": "eslint src",
         "preview": "vite preview",
         "dev:lan": "vite --host 0.0.0.0 --port 5173",
-        "preview:lan": "vite preview --host 0.0.0.0 --port 4173"
+        "preview:lan": "vite preview --host 0.0.0.0 --port 4173",
+        "db:migrate": "node run-migration.js",
+        "db:seed:test": "node seed-test-users.js",
+        "db:seed:pilot": "node seed-pilot-clinic.js",
+        "test:backend": "node scripts/run-node-tests.js",
+        "e2e": "playwright test"
     },
     "dependencies": {
         "@emotion/react": "^11.14.0",
@@ -36,6 +41,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.39.1",
+        "@playwright/test": "^1.56.1",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
         "@vitejs/plugin-react": "^5.1.1",
