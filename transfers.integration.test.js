@@ -9,7 +9,7 @@ const {
   seedUsers,
 } = require('./test-support');
 
-const PORT = Number(process.env.TEST_PORT_TRANSFERS || 5061);
+const PORT = Number(process.env.TEST_PORT_TRANSFERS || 5161);
 const runReliability = process.env.RUN_RELIABILITY_TESTS === 'true';
 
 let serverProc = null;
