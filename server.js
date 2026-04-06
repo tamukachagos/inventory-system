@@ -202,6 +202,9 @@ let movementSchemaReady = false;
 let movementSchemaExtended = false;
 let transferSchemaReady = false;
 let lotExpirySchemaReady = false;
+let movementSchemaInitPromise = null;
+let transferSchemaInitPromise = null;
+let lotExpirySchemaInitPromise = null;
 let expiryTrackedColumnAvailable = false;
 let reorderSchemaReady = false;
 let syncSchemaReady = false;
@@ -712,6 +715,8 @@ const ensureRefreshTable = async () => {
 
 const ensureMovementSchema = async () => {
   if (movementSchemaReady) return;
+  if (movementSchemaInitPromise) return movementSchemaInitPromise;
+  movementSchemaInitPromise = (async () => {
   try {
     await pool.query(
       `ALTER TABLE inventory_transactions
@@ -823,6 +828,12 @@ const ensureMovementSchema = async () => {
   );
   movementSchemaExtended = Number(columns.rows[0].count || 0) === 8;
   movementSchemaReady = true;
+  })();
+  try {
+    await movementSchemaInitPromise;
+  } finally {
+    movementSchemaInitPromise = null;
+  }
 };
 
 const transferActionIdempotencyKeyFromRequest = (req) =>
@@ -882,6 +893,8 @@ const requireTransferActionIdempotencyKey = (req, res) => {
 
 const ensureTransferSchema = async () => {
   if (transferSchemaReady) return;
+  if (transferSchemaInitPromise) return transferSchemaInitPromise;
+  transferSchemaInitPromise = (async () => {
 
   await pool.query(
     `CREATE TABLE IF NOT EXISTS organizations (
@@ -1130,10 +1143,18 @@ const ensureTransferSchema = async () => {
      ON transfer_action_idempotency(transfer_request_id, action_name)`
   );
   transferSchemaReady = true;
+  })();
+  try {
+    await transferSchemaInitPromise;
+  } finally {
+    transferSchemaInitPromise = null;
+  }
 };
 
 const ensureLotExpirySchema = async () => {
   if (lotExpirySchemaReady) return;
+  if (lotExpirySchemaInitPromise) return lotExpirySchemaInitPromise;
+  lotExpirySchemaInitPromise = (async () => {
   try {
     await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS expiry_tracked BOOLEAN NOT NULL DEFAULT FALSE`);
   } catch (err) {
@@ -1206,6 +1227,12 @@ const ensureLotExpirySchema = async () => {
      WHERE ilb.quantity > 0`
   );
   lotExpirySchemaReady = true;
+  })();
+  try {
+    await lotExpirySchemaInitPromise;
+  } finally {
+    lotExpirySchemaInitPromise = null;
+  }
 };
 
 const parseExpiryDate = (value) => {
